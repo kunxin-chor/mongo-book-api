@@ -5,7 +5,7 @@ This API allows you to interact with a bookstore database. It supports CRUD (Cre
 
 ## Base URL
 ```
-http://localhost:3000/api
+https://kxc-mongo-book-api.onrender.com/api
 ```
 
 ## Common HTTP Status Codes
