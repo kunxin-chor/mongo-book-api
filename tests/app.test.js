@@ -7,6 +7,8 @@ let server;
 let connection;
 let db;
 let mongoServer;
+let accessToken;
+
 
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
@@ -46,9 +48,18 @@ describe('Books API', () => {
     expect(res.body).toEqual([]);
   });
 
-  test('POST /api/books should create a new book', async () => {
+  test('POST /api/books should create a new book if there is a token', async () => {
     const newBook = { title: 'Test Book', author: 'Test Author', year: 2024 };
-    const res = await request(app).post('/api/books').send(newBook);
+    const testUser = {
+      username: 'testuser',
+      password: 'testpass123'
+    };
+
+    await request(app).post('/api/register').send(testUser);
+    const loginRes = await request(app).post('/api/login').send(testUser);
+    accessToken = loginRes.body.accessToken;
+
+    const res = await request(app).post('/api/books').set('Authorization', `Bearer ${accessToken}`).send(newBook);
 
     expect(res.statusCode).toBe(201);
     expect(res.body.message).toBe('Book created successfully');
@@ -58,8 +69,24 @@ describe('Books API', () => {
     expect(bookInDb).not.toBeNull();
   });
 
+  test('POST /api//books should fail without a token', async () => {
+    const newBook = { title: 'Test Book', author: 'Test Author', year: 2024 };
+    const res = await request(app).post('/api/books').send(newBook);
+    expect(res.statusCode).toBe(401);
+ 
+  });
+
   test('POST /api/books should fail with invalid input', async () => {
-    const res = await request(app).post('/api/books').send({ title: 123 });
+    const testUser = {
+      username: 'testuser',
+      password: 'testpass123'
+    }
+
+    await request(app).post('/api/register').send(testUser);
+    const loginRes = await request(app).post('/api/login').send(testUser);
+    accessToken = loginRes.body.accessToken;
+
+    const res = await request(app).post('/api/books').set('Authorization', `Bearer ${accessToken}`).send({ title: 123 });
     expect(res.statusCode).toBe(400);
     expect(res.body.message).toBe('Title is required and should be a string');
   });

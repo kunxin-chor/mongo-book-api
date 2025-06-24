@@ -175,7 +175,7 @@ async function main() {
     }
   });
 
-  app.post('/api/books', async (req, res) => {
+  app.post('/api/books', authenticateToken, async (req, res) => {
     try {
       const { title, author, year } = req.body;
 
