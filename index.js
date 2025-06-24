@@ -22,9 +22,14 @@ const authenticateToken = (req, res, next) => {
 
   if (!token) return res.sendStatus(401);
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
     if (err) return res.sendStatus(403);
-    req.user = user;
+    
+    // Set the decoded token data to req.user
+    req.user = {
+      userId: decoded.userId,
+      username: decoded.username
+    };
     next();
   });
 };
@@ -32,13 +37,43 @@ const authenticateToken = (req, res, next) => {
 app.use(cors());
 app.use(express.json());
 
+// Get user profile with their books
+app.get('/api/profile', authenticateToken, async (req, res) => {
+  try {
+    const userId = new ObjectId(req.user.userId);
+    
+    // Get user info (without password)
+    const user = await db.collection('users').findOne(
+      { _id: userId },
+      { projection: { password: 0 } } // Exclude password
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Get books added by this user
+    const books = await db.collection('books')
+      .find({ 'addedBy.userId': req.user.userId })
+      .toArray();
+
+    res.json({
+      ...user,
+      books: books || []
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error fetching profile' });
+  }
+});
+
 // Connect to MongoDB
 async function connectDB() {
   try {
     const client = await MongoClient.connect(process.env.MONGO_URI, {
       useUnifiedTopology: true
     });
-    db = client.db("bookstore");
+    db = client.db(process.env.MONGO_DBNAME || 'bookstore-with-auth');
     console.log('Connected to MongoDB');
 
   } catch (err) {
@@ -191,17 +226,39 @@ async function main() {
         return res.status(400).json({ message: 'Year is required and should be a positive integer' });
       }
 
-      const newBook = { title, author, year };
+      // Get user info from the token
+      const user = await db.collection('users').findOne({ _id: new ObjectId(req.user.userId) });
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const newBook = { 
+        title, 
+        author, 
+        year,
+        addedBy: {
+          userId: user._id,
+          username: user.username
+        },
+        createdAt: new Date()
+      };
+      
       const result = await db.collection('books').insertOne(newBook);
 
-      res.status(201).json({ message: 'Book created successfully', book: newBook });
+      res.status(201).json({ 
+        message: 'Book created successfully', 
+        book: {
+          ...newBook,
+          _id: result.insertedId
+        } 
+      });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Internal Server Error' });
     }
   });
 
-  app.put('/api/books/:id', async (req, res) => {
+  app.put('/api/books/:id', authenticateToken, async (req, res) => {
     try {
       const { title, author, year } = req.body;
       const id = req.params.id;
@@ -228,7 +285,7 @@ async function main() {
     }
   });
 
-  app.delete('/api/books/:id', async (req, res) => {
+  app.delete('/api/books/:id', authenticateToken, async (req, res) => {
     try {
       const id = req.params.id;
       await db.collection('books').deleteOne({ _id: new ObjectId(id) });

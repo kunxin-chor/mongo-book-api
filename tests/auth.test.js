@@ -19,7 +19,7 @@ beforeAll(async () => {
   const uri = mongoServer.getUri();
 
   connection = await MongoClient.connect(uri, { useUnifiedTopology: true });
-  db = connection.db('bookstore');
+  db = connection.db(process.env.MONGO_DBNAME || 'bookstore-with-auth');
   
   process.env.MONGO_URI = uri;
 
@@ -151,10 +151,34 @@ describe('Authentication API', () => {
 
   describe('GET /api/profile', () => {
     let accessToken;
+    let userId;
+    let testBook;
 
     beforeEach(async () => {
-      // Register and login to get access token
-      await request(app).post('/api/register').send(testUser);
+      // Create user directly in test DB
+      const hashedPassword = await require('bcrypt').hash(testUser.password, 10);
+      const user = {
+        username: testUser.username,
+        password: hashedPassword,
+        createdAt: new Date()
+      };
+      const userResult = await db.collection('users').insertOne(user);
+      userId = userResult.insertedId;
+
+      // Create a test book for the user
+      testBook = {
+        title: 'Test Book',
+        author: 'Test Author',
+        year: 2024,
+        addedBy: {
+          userId: userId.toString(),
+          username: testUser.username
+        },
+        createdAt: new Date()
+      };
+      await db.collection('books').insertOne(testBook);
+
+      // Login to get access token
       const loginRes = await request(app).post('/api/login').send(testUser);
       accessToken = loginRes.body.accessToken;
     });
@@ -167,6 +191,22 @@ describe('Authentication API', () => {
       expect(res.statusCode).toBe(200);
       expect(res.body.username).toBe(testUser.username);
       expect(res.body.password).toBeUndefined(); // Should not return password
+      expect(Array.isArray(res.body.books)).toBe(true);
+      expect(res.body.books.length).toBe(1);
+      expect(res.body.books[0].title).toBe(testBook.title);
+      expect(res.body.books[0].author).toBe(testBook.author);
+    });
+
+    test('should return empty books array if user has no books', async () => {
+      // Remove all books for this user
+      await db.collection('books').deleteMany({});
+      
+      const res = await request(app)
+        .get('/api/profile')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.books).toEqual([]);
     });
 
     test('should return 401 without token', async () => {
