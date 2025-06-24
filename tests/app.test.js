@@ -1,10 +1,11 @@
 const request = require('supertest');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { MongoClient, ObjectId } = require('mongodb');
+
 let app;
+let server;
 let connection;
 let db;
-
 let mongoServer;
 
 beforeAll(async () => {
@@ -14,12 +15,21 @@ beforeAll(async () => {
   connection = await MongoClient.connect(uri, { useUnifiedTopology: true });
   db = connection.db('bookstore');
 
-  // Inject the in-memory DB into the app
+  // Set test environment variables
+  process.env.JWT_SECRET = 'test-secret';
+  process.env.JWT_ACCESS_EXPIRY = '15m';
+  process.env.JWT_REFRESH_EXPIRY = '7d';
+  process.env.PORT = 3000;
   process.env.MONGO_URI = uri;
-  app = require('../index'); // Must be required after setting process.env
+  
+  // Initialize app and server
+  const appModule = require('../index');
+  app = appModule.app;
+  server = appModule.server;
 });
 
 afterAll(async () => {
+  await new Promise(resolve => server.close(resolve));
   await connection.close();
   await mongoServer.stop();
 });
