@@ -12,7 +12,7 @@ let db;
 app.use(cors());
 app.use(express.json());
 
-(async function connectDB() {
+async function connectDB() {
   try {
     const client = await MongoClient.connect(process.env.MONGO_URI, { useUnifiedTopology: true });
     db = client.db("bookstore");
@@ -20,7 +20,9 @@ app.use(express.json());
   } catch (err) {
     console.error(err);
   }
-})();
+}
+
+connectDB();
 
 app.get('/api/books', async (req, res) => {
   try {
