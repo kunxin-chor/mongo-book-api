@@ -15,7 +15,7 @@ beforeAll(async () => {
   const uri = mongoServer.getUri();
 
   connection = await MongoClient.connect(uri, { useUnifiedTopology: true });
-  db = connection.db('bookstore-with-auth');
+  db = connection.db(process.env.MONGO_DBNAME || 'bookstore-with-auth');
 
   // Set test environment variables
   process.env.JWT_SECRET = 'test-secret';
